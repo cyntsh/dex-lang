@@ -1,0 +1,2 @@
+'## LOD rendering based on 
+[Neural Geometric Level of Detail: Real-time Rendering with Implicit 3D Shapes](https://github.com/nv-tlabs/nglod/blob/main/sdf-net/lib/models/OctreeSDF.py)
