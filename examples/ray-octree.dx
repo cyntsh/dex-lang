@@ -1,2 +1,431 @@
 '## LOD rendering based on 
 [Neural Geometric Level of Detail: Real-time Rendering with Implicit 3D Shapes](https://github.com/nv-tlabs/nglod/blob/main/sdf-net/lib/models/OctreeSDF.py)
+
+import plot
+
+'## Types
+
+Height = Fin 200
+Width = Fin 200
+
+def Vec (n: Int) : Type = Fin n => Float
+Position = Vec 3
+Direction = Vec 3
+Distance = Float
+Ray = (Position & Direction)
+Voxel = (Float & Float & Float)
+LoD = Fin 5
+Octant = Fin 8
+def AABox : Type = (Position & Position)  -- opposite corners
+
+centreSphere: Position = [1.,1.,1.]
+radius: Float = 1.
+
+top_voxel = (0., 0., 0.)
+top_size = 2.
+
+gridsize = 200
+GridSize = Fin gridsize
+FlatGridSize = Fin (gridsize * gridsize * gridsize)
+factor = 100. / (200. / (IToF gridsize))
+
+'## General Utilies
+
+def W8ToB' (x : Word8) : Bool = x > (IToW8 0)  -- Bug in prelude
+
+def firstbit  (x:Word8) : Bool = W8ToB' $ x .&. (IToW8 1)
+def secondbit (x:Word8) : Bool = W8ToB' $ x .&. (IToW8 2)
+def thirdbit  (x:Word8) : Bool = W8ToB' $ x .&. (IToW8 4)
+
+def intpow2 (power:Int) : Int = %shl 1 power
+
+def floorNum (num: Float) (factor: Float): Float = 
+    IToF (FToI (num * factor)) / factor
+def ceilNum (num: Float) (factor: Float): Float =
+    (IToF (FToI (num * factor)) / factor) + 1.0 / factor
+def roundNum (num: Float) (factor: Float): Float =
+    (round (num * factor) / factor)
+
+num = 0.07974863
+:p [(floorNum num factor), (ceilNum num factor), (roundNum num factor)]
+
+def lastLoD : LoD = ((size LoD) - 1)@LoD
+
+def vecLength (v: Vec 3) : Distance =
+    [x, y, z] = v
+    sqrt $ sum for i. sq v.i
+
+def factorToDist (factor: Float) (dir: Direction): Distance =
+    factor * (vecLength dir)
+
+def distToFactor (d: Distance) (dir: Direction): Float =
+    d / (vecLength dir)
+
+def factorToPos (factor: Float) (orig: Position) (dir: Direction) : Position =
+    orig + factor .* dir
+
+def posToFactor (p: Position) (orig: Position) (dir: Direction) : Float =
+    dir' = (p - orig)
+    case dir.(0@_) == 0.0 of
+        False -> dir'.(0@_) / dir.(0@_)
+        True -> 
+            case dir.(1@_) == 0.0 of
+                False -> dir'.(1@_) / dir.(1@_)
+                True ->
+                    case dir.(2@_) == 0.0 of 
+                        False -> dir'.(2@_) / dir.(2@_)
+                        True -> 1.
+
+def mkGrid (pts: FlatGridSize => a) : GridSize => GridSize => GridSize => a =
+    grid = for i:GridSize. 
+            table1 = for j:GridSize. 
+                table2 = for k:GridSize. pts.((ordinal (i,j,k))@_)
+                table2 
+            table1
+    grid
+
+'## Voxel utilities
+
+def voxelWidth (lod: Int) : Float = 
+  -- voxels divide up cube in (-1, 1)
+  numDivisions = intpow2 $ lod
+  top_size / (IToF numDivisions)
+
+--:p voxelWidth (2)
+
+def voxelToCentrePosition (lod: LoD) (voxel: Voxel) : Position =
+  divSize = voxelWidth (ordinal lod)
+  (xn, yn, zn) = voxel
+  [0.5*divSize + xn,
+   0.5*divSize + yn,
+   0.5*divSize + zn]
+
+--:p voxelToCentrePosition (1@LoD) (0.,0.,0.)
+
+octantBackToFrontTable : Octant => Octant => Octant =
+    intTable = [[ 0, 1, 2, 4, 3, 5, 6, 7 ],
+                [ 1, 0, 3, 5, 2, 4, 7, 6 ],
+                [ 2, 0, 3, 6, 1, 4, 7, 5 ],
+                [ 3, 1, 2, 7, 0, 5, 6, 4 ],
+                [ 4, 0, 5, 6, 1, 2, 7, 3 ],
+                [ 5, 1, 4, 7, 0, 3, 6, 2 ],
+                [ 6, 2, 4, 7, 0, 3, 5, 1 ],
+                [ 7, 3, 5, 6, 1, 2, 4, 0 ]]
+    for i j. (intTable.i.j@Octant)
+
+def subVoxelPosToChildOctant (lod: LoD) (voxel: Voxel) (pos:Position) : Octant =
+  [mid_x, mid_y, mid_z] = voxelToCentrePosition lod voxel
+  [pos_x, pos_y, pos_z] = pos 
+  bit1 = BToW8 $ pos_x > mid_x
+  bit2 = BToW8 $ pos_y > mid_y
+  bit3 = BToW8 $ pos_z > mid_z
+  bits = W8ToI $ bit1 .|. (bit2 << 1) .|. (bit3 << 2)
+  bits@Octant
+
+'## Bounding box utilities
+
+def voxeltoBB (lod:Int) (voxel: Voxel) : AABox =
+  vwidth = voxelWidth lod
+  (x, y, z) = voxel
+  lower = [x, y, z]
+  upper = [x + vwidth,
+           y + vwidth,
+           z + vwidth]
+  (lower, upper)
+
+--:p voxeltoBB (2) (0.,0.,0.) 
+
+def rayAABBIntersects (ray:Ray) (box:AABox) : Bool =
+  ([pos_x, pos_y, pos_z], [dir_x,  dir_y,  dir_z ]) = ray
+  ([low_x, low_y, low_z], [high_x, high_y, high_z]) = box
+  (tx1, tx2) = ((low_x - pos_x) / dir_x, (high_x - pos_x) / dir_x)
+  (ty1, ty2) = ((low_y - pos_y) / dir_y, (high_y - pos_y) / dir_y)
+  (tz1, tz2) = ((low_z - pos_z) / dir_z, (high_z - pos_z) / dir_z)
+  txn = min tx1 tx2
+  txf = max tx1 tx2
+  tyn = min ty1 ty2
+  tyf = max ty1 ty2
+  tzn = min tz1 tz2
+  tzf = max tz1 tz2
+  tnear = max txn $ max tyn tzn
+  tfar  = min txf $ min tyf tzf
+  tfar > tnear && tfar > 0.0
+
+--:p rayAABBIntersects (zero, [0.1, 0.1, 0.1]) (([1., 0., 0.], [2., 1., 1.]))
+
+def rayAABBIntersection (ray: Ray) (box: AABox) : (Position & Position) =
+  ([pos_x, pos_y, pos_z], [dir_x,  dir_y,  dir_z ]) = ray
+  ([low_x, low_y, low_z], [high_x, high_y, high_z]) = box
+  (tx1, tx2) = case dir_x == 0.0 of 
+    True -> (low_x, high_x)
+    False -> ((low_x - pos_x) / dir_x, (high_x - pos_x) / dir_x)
+  (ty1, ty2) = case dir_y == 0.0 of 
+    True -> (low_y, high_y)
+    False -> ((low_y - pos_y) / dir_y, (high_y - pos_y) / dir_y)
+  (tz1, tz2) = case dir_z == 0.0 of 
+    True -> (low_z, high_z)
+    False -> ((low_z - pos_z) / dir_z, (high_z - pos_z) / dir_z)
+  ([pos_x + tx1 * dir_x, pos_y + ty1 * dir_y, pos_z + tz1 * dir_z],
+   [pos_x + tx2 * dir_x, pos_y + ty2 * dir_y, pos_z + tz2 * dir_z])
+
+--:p rayAABBIntersection (zero, [0.1, 0.1, 0.1]) (([-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]))
+
+def intersectsVoxel (ray: Ray) (lod: Int) (voxel: Voxel) : Bool =
+  box = voxeltoBB lod voxel
+  rayAABBIntersects ray box
+
+def intersection (ray: Ray) (lod: Int) (voxel: Voxel) : (Position & Position) =
+    box = voxeltoBB lod voxel
+    rayAABBIntersection ray box
+
+--:p intersectsVoxel (zero, [0.1, 0.1, 0.1]) (1) (1., 0., 0.)
+
+'## Signed Distance Field 
+
+def sphereSDF (p: Position) : Distance = 
+    (vecLength (centreSphere - p)) - radius
+
+def loadSDFGrid : List Float32 =
+    (AsList byteCount bytesArray) = unsafeIO do readFile "examples/sdf_grid_v4.bin"
+    floatCount = idiv byteCount 4
+    floatArray: Fin floatCount => Float32 = unsafeIO do 
+        withTabPtr bytesArray \ptr.
+            tabFromPtr (Fin floatCount) $ castPtr ptr
+    AsList floatCount floatArray
+
+def loadSDFGrad : List Float32 =
+    (AsList byteCount bytesArray) = unsafeIO do readFile "examples/sdf_grad_v4.bin"
+    floatCount = idiv byteCount 4
+    floatArray: Fin floatCount => Float32 = unsafeIO do 
+        withTabPtr bytesArray \ptr.
+            tabFromPtr (Fin floatCount) $ castPtr ptr
+    AsList floatCount floatArray
+
+(AsList numPts sdf_grid) = loadSDFGrid
+(AsList numGrad flat_sdf_grad) = loadSDFGrad
+sdf_grad = for i:FlatGridSize.
+            table = for j:(Fin 3). flat_sdf_grad.((ordinal (i,j))@_)
+            table
+
+sdfGrid = mkGrid sdf_grid
+sdfGrad = mkGrid sdf_grad
+
+-- tests:
+--sample_sdf_pts = for i:(Fin 20). sdf_grid.((ordinal i)@_)
+--:p sample_sdf_pts
+--sample_flat = for i:(Fin 20). flat_sdf_grad.((ordinal i)@_)
+--:p sample_flat
+--:p numGrad == (3 * numPts)
+--sample_sdf_grads = for i:(Fin 20). sdf_grad.((ordinal i)@_)
+--:p sample_sdf_grads
+--sample_sdfGrid = sdfGrid.(0@_).(0@_).(10@_)
+--sample_sdfGrad = sdfGrad.(0@_).(0@_).(10@_)
+--:p sample_sdfGrid
+--:p sample_sdfGrad
+
+def pointToDistance (p: Position) : Distance =
+    [x, y, z] = p
+    x' = (FToI (round (x*factor)))
+    y' = (FToI (round (y*factor)))
+    z' = (FToI (round (z*factor)))
+    x'' = case (x' >= gridsize) of 
+        True -> (gridsize - 1)
+        False -> x'
+    y'' = case (y' >= gridsize) of 
+        True -> (gridsize - 1)
+        False -> y'
+    z'' = case (z' >= gridsize) of 
+        True -> (gridsize - 1)
+        False -> z'
+    sdfGrid.(x''@GridSize).(y''@GridSize).(z''@GridSize)
+
+--:p pointToDistance [0.12,0.23,0.11]
+
+def pointToGrad (p: Position) : Direction =
+    [x, y, z] = p 
+    x' = (FToI (round (x*factor)))
+    y' = (FToI (round (y*factor)))
+    z' = (FToI (round (z*factor)))
+    x'' = case (x' >= gridsize) of 
+        True -> (gridsize - 1)
+        False -> x'
+    y'' = case (y' >= gridsize) of 
+        True -> (gridsize - 1)
+        False -> y'
+    z'' = case (z' >= gridsize) of 
+        True -> (gridsize - 1)
+        False -> z'
+    sdfGrad.(x''@GridSize).(y''@GridSize).(z''@GridSize)
+
+--:p pointToGrad [0.12,0.23,0.11]
+
+def nearestSDF (p: Position) : (Fin 8) => Distance =
+    [x, y, z] = p
+    (x_floor, x_ceil) = ((floorNum x factor), (ceilNum x factor))
+    (y_floor, y_ceil) = ((floorNum y factor), (ceilNum y factor))
+    (z_floor, z_ceil) = ((floorNum z factor), (ceilNum z factor))
+    [pointToDistance [x_floor, y_floor, z_floor], 
+     pointToDistance [x_floor, y_floor, z_ceil],
+     pointToDistance [x_floor, y_ceil, z_floor], 
+     pointToDistance [x_floor, y_ceil, z_ceil],
+     pointToDistance [x_ceil, y_floor, z_floor],
+     pointToDistance [x_ceil, y_floor, z_ceil],
+     pointToDistance [x_ceil, y_ceil, z_floor],
+     pointToDistance [x_ceil, y_ceil, z_ceil]]
+
+def nearestGrad (p: Position) : Direction = 
+    [x, y, z] = p
+    x_round = roundNum x factor 
+    y_round = roundNum y factor 
+    z_round = roundNum z factor
+    pointToGrad [x_round, y_round, z_round]
+    
+--:p nearestSDF [0.12123,0.239123,0.11]
+
+def dilloSDF (p: Position) : (Distance & Bool) =
+    d = minimum (nearestSDF p)
+    -- if a corner has negative distance, then the point must be near the surface
+    case (d < 0.) of 
+        True -> (d, True)
+        False -> (d, False)
+
+--:p dilloSDF [0.1,0.239123,0.]
+
+def dilloGradSDF (p: Position) : Direction =
+    nearestGrad p
+
+--:p dilloGradSDF [0.1,0.239123,0.]
+
+'## Octtree intersection
+
+def onSurface (ray: Ray) (lod: Int) (voxel: Voxel) : Bool =
+    (frayVoxPos, nrayVoxPos) = intersection ray (lod + 1) voxel
+    d = fst (dilloSDF frayVoxPos)
+    voxSpan = vecLength (frayVoxPos - nrayVoxPos) -- the maximum before the ray passes through voxel
+    d <= voxSpan
+
+def childOctantToSubVoxel (ray: Ray) (lod: Int) (oct: Octant) (voxel: Voxel) : (Voxel & Bool) =
+    oo = IToW8 $ ordinal oct
+    (x, y, z) = voxel
+    vwidth = voxelWidth (lod + 1)
+    subvoxel = (x + vwidth*(BToF $ firstbit oo),
+                y + vwidth*(BToF $ secondbit oo),
+                z + vwidth*(BToF $ thirdbit oo))
+    (subvoxel, intersectsVoxel ray (lod + 1) subvoxel)
+
+-- only called for subdividing the last LOD    
+def childOctantToLastSubVoxel (ray: Ray) (lod: Int) (oct: Octant) (voxel: Voxel) : (Voxel & Bool) =
+    oo = IToW8 $ ordinal oct
+    (x, y, z) = voxel
+    vwidth = voxelWidth (lod + 1)
+    subvoxelPos = (x + vwidth*(BToF $ firstbit oo),
+                   y + vwidth*(BToF $ secondbit oo),
+                   z + vwidth*(BToF $ thirdbit oo))
+    intersects = intersectsVoxel ray (lod + 1) subvoxelPos
+    case intersects of 
+        False -> (subvoxelPos, False)
+        True ->
+            case (onSurface ray lod voxel) of
+                False -> (subvoxelPos, False)
+                True -> (subvoxelPos, True)
+
+
+
+--:p childOctantToSubVoxel (zero, [0.1, 0.1, 0.1]) (0) (1@_) (0., 0., 0.)
+
+def intersectedVoxels (ray: Ray) (lod: LoD) (childOcts: Octant => Octant) (voxel: Voxel): List Voxel =
+  emptyList = AsList _ []
+  yieldState emptyList \ref. 
+    boundedIter 8 (get ref) \i.
+        subvoxel_pair = case (lod == lastLoD) of
+            False -> childOctantToSubVoxel ray (ordinal lod) childOcts.(i@_) voxel
+            True -> childOctantToLastSubVoxel ray (ordinal lod) childOcts.(i@_) voxel
+        if (snd subvoxel_pair) then
+            ref := concat [ (get ref), toList [(fst subvoxel_pair)] ]
+        
+        case (snd subvoxel_pair && (lod == lastLoD)) of 
+            True -> Done $ get ref 
+            False -> Continue
+
+--:p intersectedVoxels (zero, [0.1, 0.1, 0.1]) (0@(LoD)) [0@_, 1@_, 2@_, 4@_, 3@_, 5@_, 6@_, 7@_] (0., 0., 0.)
+
+def orderedChildren (lod: LoD) (ray: Ray) (voxel: Voxel) : Octant=>Octant =
+  (pos, dir) = ray
+  oct = subVoxelPosToChildOctant lod voxel pos
+  octantBackToFrontTable oct
+
+def subdivide (ray: Ray) (lod: LoD) (voxelList: List Voxel) : List Voxel =
+    (AsList _ voxels) = voxelList
+    yieldAccum (ListMonoid Voxel) \list.
+        for i.
+          childOcts = orderedChildren lod ray voxels.i
+          intersected = intersectedVoxels ray lod childOcts voxels.i
+          list += intersected
+
+def rayOctreeIntersection (ray: Ray) : LoD => List Voxel =
+    init = AsList 1 [top_voxel]
+    fst $ runState init \ref. for lod:LoD.
+        vlevel = get ref
+        ref := subdivide ray lod vlevel
+        vlevel
+
+def firstRayOctreeIntersection (ray: Ray) : List Voxel =
+    init = AsList 1 [top_voxel]
+    voxelList = fst $ runState init \ref. for lod:LoD.
+        vlevel = get ref
+        ref := subdivide ray lod vlevel
+        vlevel
+    voxelList.lastLoD
+
+def sphereTrace (ray: Ray) (lod: LoD) (voxelList: List Voxel) : Color =
+    maxIters = 200
+    minDist = 0.0003
+    (rayOrigin, rayDir) = ray
+    (AsList numVoxels vl) = voxelList 
+    final = yieldState (0.001, 0) \t.
+        boundedIter numVoxels (0.0, 0) \i.
+            voxPos = vl.(i@_)
+            (nrayVoxPos, frayVoxPos) = intersection ray (ordinal lod) voxPos -- returns (near, far)
+            t := ((posToFactor nrayVoxPos rayOrigin rayDir), snd (get t))
+    
+            -- sphere tracing iterations
+            t := boundedIter maxIters (0.0, 0) \_.
+                query = dilloSDF (factorToPos (fst (get t)) rayOrigin rayDir)
+                newDist = fst query
+                currDist = factorToDist (fst (get t)) rayDir
+                accumDist = currDist + newDist
+                t' = distToFactor accumDist rayDir
+                voxSpan = vecLength (frayVoxPos - nrayVoxPos) -- the maximum before the ray passes through voxel
+                case (snd query) of 
+                    True -> Done ((fst (get t)), 1)
+                    False ->
+                        t := (t', (snd (get t)))
+                        case newDist > minDist of 
+                            True ->
+                                case newDist < voxSpan of
+                                    True -> Continue
+                                    False -> Done ((fst (get t)), 0)
+                            False -> 
+                                Done ((fst (get t)), 1)
+
+            case (snd (get t)) == 1 of 
+                True -> Done (get t)
+                False -> Continue
+    case (W8ToB (IToW8 (snd final))) of
+        True -> (grad sphereSDF) (rayOrigin + (fst final) .* rayDir)
+        False -> [0., 0., 0.]
+
+%time 
+rayvoxels: Height => Width => (Ray & List Voxel) = for x:Height. for y:Width.
+    rx = 2. * (IToF (ordinal x)) / (IToF (size Height))
+    ry = 2. * (IToF (ordinal y)) / (IToF (size Width))
+    ray = ([rx, ry, 0.], [0., 0., 1.])
+    (ray, firstRayOctreeIntersection ray)
+
+%time
+canvas: Height => Width => Color = for x:Height. for y:Width.
+    c = sphereTrace (fst rayvoxels.x.y)  lastLoD (snd rayvoxels.x.y)
+    -1. .* c
+
+-- :p canvas
+:html imshow canvas
