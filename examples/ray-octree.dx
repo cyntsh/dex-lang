@@ -412,7 +412,7 @@ def sphereTrace (ray: Ray) (lod: LoD) (voxelList: List Voxel) : Color =
                 True -> Done (get t)
                 False -> Continue
     case (W8ToB (IToW8 (snd final))) of
-        True -> (grad sphereSDF) (rayOrigin + (fst final) .* rayDir)
+        True -> dilloGradSDF (rayOrigin + (fst final) .* rayDir)
         False -> [0., 0., 0.]
 
 %time 
@@ -425,7 +425,7 @@ rayvoxels: Height => Width => (Ray & List Voxel) = for x:Height. for y:Width.
 %time
 canvas: Height => Width => Color = for x:Height. for y:Width.
     c = sphereTrace (fst rayvoxels.x.y)  lastLoD (snd rayvoxels.x.y)
-    -1. .* c
+    100. .* c
 
--- :p canvas
+--:p canvas
 :html imshow canvas
