@@ -1,5 +1,6 @@
 '## LOD rendering based on 
-[Neural Geometric Level of Detail: Real-time Rendering with Implicit 3D Shapes](https://github.com/nv-tlabs/nglod/blob/main/sdf-net/lib/models/OctreeSDF.py), with the SDF embedded in Dex.
+[Neural Geometric Level of Detail: Real-time Rendering with Implicit 3D Shapes](https://github.com/nv-tlabs/nglod/blob/main/sdf-net/lib/models/OctreeSDF.py), 
+with the SDF embedded in Dex.
 
 import plot
 
@@ -515,6 +516,6 @@ canvas: Height => Width => Color = for x:Height. for y:Width.
     c = sphereTrace (fst rayvoxels.x.y)  lastLoD (snd rayvoxels.x.y)
     100. .* c
 
-:p canvas
+--:p canvas
 :html imshow canvas
 
