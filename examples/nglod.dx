@@ -19,7 +19,7 @@ LoD = Fin 2
 Octant = Fin 8
 def AABox : Type = (Position & Position)  -- opposite corners
 
-top_voxel = (0., 0., 0.)
+top_voxel = (-1., -1., -1.)
 top_size = 2.
 
 fdim = 32
@@ -506,8 +506,8 @@ def sphereTrace (ray: Ray) (lod: LoD) (voxelList: List Voxel) : Color =
 
 %time 
 rayvoxels: Height => Width => (Ray & List Voxel) = for x:Height. for y:Width.
-    rx = 2. * (IToF (ordinal x)) / IToF (size Height)
-    ry = 2. * (IToF (ordinal y)) / IToF (size Width)
+    rx = 2. * (IToF (ordinal x)) / IToF (size Height) - 1.0
+    ry = 2. * (IToF (ordinal y)) / IToF (size Width) - 1.0
     ray = ([rx, ry, 0.], [0., 0., 1.])
     (ray, firstRayOctreeIntersection ray)
 
