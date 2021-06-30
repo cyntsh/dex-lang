@@ -257,13 +257,6 @@ p = [0.,0.,0.5]
 def relu (input : Float) : Float =
   select (input > 0.0) input 0.0
 
-def sumInterp (p: Position) : FDim => Float =
-    yieldAccum (AddMonoid (FDim => Float)) \list.
-        for i:LoD.
-            s = getSize (ordinal i)
-            interp: FDim => Float = trilinear_interp (query_feature_vol (ordinal i) (Fin s)) p
-            list += interp
-
 def dilloMLP (p: Position) : Distance =
     f = (trilinear_interp f0 p) + (trilinear_interp f1 p) + (trilinear_interp f2 p) + (trilinear_interp f3 p) + (trilinear_interp f4 p)
     comb_input = (AsList _ p) <> (AsList _ f)
