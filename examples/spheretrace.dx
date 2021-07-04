@@ -1,5 +1,8 @@
 '# Basic sphere-tracing using imported weights, trained from the NGLOD repository: https://github.com/nv-tlabs/nglod
 
+'TODO: The code for loading can be condensed with %inject, it's much more direct than the slicing function
+
+
 import plot
 
 '## Types
