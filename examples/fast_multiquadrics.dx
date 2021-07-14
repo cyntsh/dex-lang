@@ -1,0 +1,50 @@
+-- exploring abstract algebra
+
+def intlog2 (x:Int) : Int =
+  yieldState (-1) \ansRef.
+    runState 1 \cmpRef.
+      while do
+        if x >= (get cmpRef)
+          then 
+            ansRef := (get ansRef) + 1
+            cmpRef := %shl (get cmpRef) 1
+            True
+          else
+            False
+
+def intpow2 (power:Int) : Int = %shl 1 power
+
+-- alternatively, add Monoid instance for a pair of monoids.
+def splitFilter (xs:n=>Float) (threshold: Float): (List Float & List Float) =
+    yieldState (AsList _ [], AsList _ []) \ref.
+        (fstRef ref) := yieldAccum (ListMonoid Float) \filtered.
+            (sndRef ref) := yieldAccum (ListMonoid Float) \leftover.
+                for_ i:n. 
+                    case abs (xs.i - x) >= threshold of
+                        True -> filtered += AsList _ [xs.i]
+                        False -> leftover += AsList _ [xs.i]
+
+c = 
+m = -- # levels
+N = 10
+m = intlog2 N -- # levels
+w = N/(intpow2 m)
+
+def phi (x: Float) : Float = sqrt (x^2 + c^2)
+
+-- far-field expansions
+def direct_eval () : =
+def farfield_approx () : =
+def s (level: ) : 
+
+sources : Fin N =
+weights : Fin N = 
+
+(farfield, nearneighb) = splitFilter source w
+
+-- setup
+
+
+-- evaluation
+x = 
+
