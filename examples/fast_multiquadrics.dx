@@ -34,13 +34,31 @@ def rbf (x: Float) (sources: (Fin n)=>Float) (weights: (Fin n)=>Float) : Float =
 -- based on https://www.sciencedirect.com/science/article/pii/089812219290167G,
 -- a good choice is p = (log e) / (log a), a = (sqrt 2)/3
 
-e = 0.1
+e = 0.01
 a = (sqrt 2.)/3.
 p = log2 e / log2 a
 p
+p_int = 6
 
 sources = randVec n rand (newKey 0)
 weights = randVec n rand (newKey 1)
+
+-- todo: a bit inconvenient to adjust sum_coeff and laurent_approx every time p_int is changed
+def sum_coeff (s: (Fin a) => Float) : (Fin 6) => Float =
+
+    term2 = yieldAccum (AddMonoid Float) \t.
+        for_ i:(Fin a). t += s.i 
+    term4 = yieldAccum (AddMonoid Float) \t.
+        for_ i:(Fin a). t += 0.5 *c*c*s.i
+    term5 = yieldAccum (AddMonoid Float) \t.
+        for_ i:(Fin a). t+= 0.125 * (4. * s.i*s.i*c*c - c*c*c*c)     
+    term6 = yieldAccum (AddMonoid Float) \t.
+        for_ i:(Fin a). t+= 0.125 * (4. * s.i*s.i*s.i*c*c - 3. * s.i*c*c*c*c)
+    
+    [IToF a, term2, (IToF a) * 0.5 * (sq c), term4, term5, term6]
+
+def laurent_approx (x: Float) (coeff: (Fin 6) => Float) : Float =
+    coeff.(0@_)*x - coeff.(1@_) + coeff.(2@_)/x + coeff.(3@_)/(x*x) + coeff.(4@_)/(x*x*x) + coeff.(5@_)/(x*x*x*x)
 
 'Setup
 
@@ -59,10 +77,10 @@ def sort (panels: Tree) (sources: (Fin n)=>Float) (root: (Float & Float)): Tree 
 
 -- key idea: separate the involvement of the evaluation point and source points in the summation
 -- hierarchy subdivision is probably not necessary here. The point is to differentiate nearest from far.
-x = -- evaluation point
+x = 0.1 -- evaluation point
 
-%time
-rbf x 
+--%time
+--rbf x 
 
 %time
 rbf x sources weights
