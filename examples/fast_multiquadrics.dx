@@ -19,7 +19,9 @@ def intpow2 (power:Int) : Int = %shl 1 power
 c = 0.1
 n = 64
 m = intlog2 n -- # levels
-num_panels = intpow2 m
+num_leaves = intpow2 m
+l = 1. -- root panel: [0, 1]
+w = l/num_leaves
 
 -- multiquadric radial basis function, naive summation
 def rbf (x: Float) (sources: (Fin n)=>Float) (weights: (Fin n)=>Float) : Float = 
@@ -27,7 +29,6 @@ def rbf (x: Float) (sources: (Fin n)=>Float) (weights: (Fin n)=>Float) : Float =
 
 'Far-field expansions
 
--- root panel: [0, 1]
 -- there is a tradeoff between 
     -- precision (error e) and 
     -- efficiency (number of truncated laurent series terms p)
@@ -62,16 +63,25 @@ def laurent_approx (x: Float) (coeff: (Fin 6) => Float) : Float =
 
 'Setup
 
--- heuristically for now, an array representation for the tree
-Tree = (Fin num_panels) => List Int 
--- todo: make an index set that starts from 1 instead of 0
+-- an array representation for the tree leaves. it's not necessary to have the entire tree.
+Tree = (Fin num_leaves) => List Float\
 panels: Tree = for i. AsList _ []
 
--- wip
+-- stateful sort for now.
 def sort (panels: Tree) (sources: (Fin n)=>Float) (root: (Float & Float)): Tree =
     yieldState panels \ref.
-        for i:(Fin num_panels). 
-            ref!i := AsList _ [2]
+        for i:(Fin n). 
+            s = sources.i
+            final_range = yieldState root \range.
+                for i:(Fin m).
+                    middle = ((fst (get range)) + (snd (get range))) / 2.
+                    range := case s > middle of 
+                        True -> (middle, snd (get range))
+                        False -> (fst (get range), middle)
+            index = FToI $ (fst final_range)/w
+            ref!index := ref.index <> AsList _ [s]
+
+
 
 'Evaluation
 
