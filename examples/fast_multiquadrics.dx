@@ -1,4 +1,6 @@
--- exploring abstract algebra
+'## Fast multiquadrics 
+Laurent series expansion for the fast summation of radial basis functions,
+based on this [tutorial](https://math.nyu.edu/~greengar/shortcourse_fmm.pdf).
 
 def intlog2 (x:Int) : Int =
   yieldState (-1) \ansRef.
@@ -14,37 +16,53 @@ def intlog2 (x:Int) : Int =
 
 def intpow2 (power:Int) : Int = %shl 1 power
 
--- alternatively, add Monoid instance for a pair of monoids.
-def splitFilter (xs:n=>Float) (threshold: Float): (List Float & List Float) =
-    yieldState (AsList _ [], AsList _ []) \ref.
-        (fstRef ref) := yieldAccum (ListMonoid Float) \filtered.
-            (sndRef ref) := yieldAccum (ListMonoid Float) \leftover.
-                for_ i:n. 
-                    case abs (xs.i - x) >= threshold of
-                        True -> filtered += AsList _ [xs.i]
-                        False -> leftover += AsList _ [xs.i]
+c = 0.1
+n = 64
+m = intlog2 n -- # levels
+num_panels = intpow2 m
 
-c = 
-m = -- # levels
-N = 10
-m = intlog2 N -- # levels
-w = N/(intpow2 m)
+-- multiquadric radial basis function, naive summation
+def rbf (x: Float) (sources: (Fin n)=>Float) (weights: (Fin n)=>Float) : Float = 
+    sum for i:(Fin n). weights.i * sqrt (sq (x - sources.i) + sq c)
 
-def phi (x: Float) : Float = sqrt (x^2 + c^2)
+'Far-field expansions
 
--- far-field expansions
-def direct_eval () : =
-def farfield_approx () : =
-def s (level: ) : 
+-- root panel: [0, 1]
+-- there is a tradeoff between 
+    -- precision (error e) and 
+    -- efficiency (number of truncated laurent series terms p)
+-- based on https://www.sciencedirect.com/science/article/pii/089812219290167G,
+-- a good choice is p = (log e) / (log a), a = (sqrt 2)/3
 
-sources : Fin N =
-weights : Fin N = 
+e = 0.1
+a = (sqrt 2.)/3.
+p = log2 e / log2 a
+p
 
-(farfield, nearneighb) = splitFilter source w
+sources = randVec n rand (newKey 0)
+weights = randVec n rand (newKey 1)
 
--- setup
+'Setup
 
+-- heuristically for now, an array representation for the tree
+Tree = (Fin num_panels) => List Int 
+-- todo: make an index set that starts from 1 instead of 0
+panels: Tree = for i. AsList _ []
 
--- evaluation
-x = 
+-- wip
+def sort (panels: Tree) (sources: (Fin n)=>Float) (root: (Float & Float)): Tree =
+    yieldState panels \ref.
+        for i:(Fin num_panels). 
+            ref!i := AsList _ [2]
 
+'Evaluation
+
+-- key idea: separate the involvement of the evaluation point and source points in the summation
+-- hierarchy subdivision is probably not necessary here. The point is to differentiate nearest from far.
+x = -- evaluation point
+
+%time
+rbf x 
+
+%time
+rbf x sources weights
