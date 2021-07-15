@@ -20,6 +20,9 @@ c = 0.1
 n = 64
 m = intlog2 n -- # levels
 num_leaves = intpow2 m
+num_panels = sum $ withState num_leaves \num. for i:(Fin m). 
+    num := idiv (get num) 2
+    get num
 l = 1. -- root panel: [0, 1]
 w = l/(IToF num_leaves)
 
@@ -64,30 +67,52 @@ def laurent_approx (x: Float) (coeff: (Fin 6) => Float) : Float =
 
 'Setup
 
--- an array representation for the tree leaves. it's not necessary to have the entire tree.
-Tree = (Fin num_leaves) => List Float
-panels: Tree = for i. AsList _ []
+-- an array representation for the tree.
+Tree = (Fin num_panels) => (Fin 6) => Float
+Leaves = (Fin num_leaves) => List (Float & Float)
 
--- stateful sort for now.
-def sort (panels: Tree) (queries: (Fin n)=>Float) (root: (Float & Float)): Tree =
-    yieldState panels \ref.
+def sort (queries: (Fin n)=>(Float&Float)) (root: (Float & Float)): Leaves =
+    init: Leaves = for i. AsList _ []
+    yieldState init \ref.
         for i:(Fin n). 
             s = queries.i
             final_range = yieldState root \range.
                 for i:(Fin m).
                     middle = ((fst (get range)) + (snd (get range))) / 2.
-                    range := case s > middle of 
+                    range := case (fst s) > middle of 
                         True -> (middle, snd (get range))
                         False -> (fst (get range), middle)
             index = FToI $ (fst final_range)/w
             ref!(index@_) := (get ref).(index@_) <> AsList _ [s]
 
+-- a bit of dynamic programming
+def expand (leaves: Leaves) : Tree =
+    panels: Tree = for i. for j. 0.
+    yieldState panels \ref.
+        init = num_panels - 1
+        next_init = yieldState init \index.
+            for_ i:(Fin num_leaves).
+                i' = num_leaves - (ordinal i) - 1
+                (AsList numq q) = leaves.i
+                if numq /= 0 then
+                    q' = for i:(Fin 6). q.(unsafeFromOrdinal _ (ordinal i))
+                    ref!((get index)@_) := sum_coeff q'
+                    index := (get index) - 1
+        yieldState next_init \index.
+            num_ances = num_panels - num_leaves
+            for_ i:(Fin num_ances).
+                left = (get index) * 2
+                right = (get index) * 2 + 1
+                ref!((get index)@_) := (get ref).(left@_) + (get ref).(right@_)
+                index := (get index) - 1
+
+sorted = sort queries (0., 1.)
+expanded = expand sorted
 
 
 'Evaluation
 
 -- key idea: separate the involvement of the evaluation point and source points in the summation
--- hierarchy subdivision is probably not necessary here. The point is to differentiate nearest from far.
 x = 0.1 -- evaluation point
 
 --%time
