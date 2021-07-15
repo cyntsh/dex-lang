@@ -16,12 +16,12 @@ def intlog2 (x:Int) : Int =
 
 def intpow2 (power:Int) : Int = %shl 1 power
 
-c = 0.1
+c = 0.5
 n = 64
 m = intlog2 n -- # levels
-num_leaves = intpow2 m
+num_leaves = intpow2 (m-1)
 num_panels = sum $ withState num_leaves \num. for i:(Fin m). 
-    num := idiv (get num) 2
+    num := intpow2 (ordinal i)
     get num
 l = 1. -- root panel: [0, 1]
 w = l/(IToF num_leaves)
@@ -93,11 +93,11 @@ def expand (leaves: Leaves) : Tree =
         next_init = yieldState init \index.
             for_ i:(Fin num_leaves).
                 i' = num_leaves - (ordinal i) - 1
-                (AsList numq q) = leaves.i
+                (AsList numq q) = leaves.(i'@_)
                 if numq /= 0 then
-                    q' = for i:(Fin 6). q.(unsafeFromOrdinal _ (ordinal i))
+                    q' = for j:(Fin numq). q.(unsafeFromOrdinal _ (ordinal j))
                     ref!((get index)@_) := sum_coeff q'
-                    index := (get index) - 1
+                index := (get index) - 1
         yieldState next_init \index.
             num_ances = num_panels - num_leaves
             for_ i:(Fin num_ances).
@@ -108,7 +108,6 @@ def expand (leaves: Leaves) : Tree =
 
 sorted = sort queries (0., 1.)
 expanded = expand sorted
-
 
 'Evaluation
 
