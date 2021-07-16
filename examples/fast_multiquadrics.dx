@@ -101,8 +101,8 @@ def expand (leaves: Leaves) : Tree =
         yieldState next_init \index.
             num_ances = num_panels - num_leaves
             for_ i:(Fin num_ances).
-                left = (get index) * 2
-                right = (get index) * 2 + 1
+                left = ((get index)+1) * 2 - 1
+                right = ((get index)+1) * 2
                 ref!((get index)@_) := (get ref).(left@_) + (get ref).(right@_)
                 index := (get index) - 1
 
@@ -127,21 +127,31 @@ x = 0.1 -- evaluation point
 -- traverse m - 3 times. this can inform the bound for the time complexity
 def rbf_approx (x: Float) (tree: Tree) (root: (Float&Float)) : Float =
     yieldState 0.0 \sum. yieldState root \range. yieldState 0 \index.
-        sum := boundedIter m (get sum) \_.
+        sum := boundedIter m (get sum) \i.
             middle = ((fst (get range)) + (snd (get range))) / 2.
-            if (x > middle + w) -- can approximate all of the left side of the tree
-                then 
+            case (x > middle + w) of 
+                True -> -- can approximate all of the left side of the tree
                     index' = (get index) * 2
                     sum := (get sum) + (laurent_approx x tree.(index'@_))
                     index := (get index) * 2 + 1
                     range := (middle, snd (get range))
-                else if (x < middle - w) -- can approximate all of the right side of the tree
-                    then
-                        index' = (get index) * 2 + 1
-                        sum := (get sum) + (laurent_approx x tree.(index'@_))
-                        index := (get index) * 2
-                        range := (fst (get range), middle)
-                    else
+                    Continue 
+                False ->
+                    case (x < middle - w) of
+                        True -> -- can approximate all of the right side of the tree
+                            index' = (get index) * 2 + 1
+                            sum := (get sum) + (laurent_approx x tree.(index'@_))
+                            index := (get index) * 2
+                            range := (fst (get range), middle)
+                            Continue
+                        False -> -- we're always looking at the middle, so traversing left/right has the same # of steps
+                            num_traverse = m - 3 - i
+                            -- no need to traverse if num_traverse is negative.
+                            -- first get the middle index. index is odd iff points to left child. 
+                            -- then get the nearest neighbours.
+                            for j:(Fin num_traverse). 
+                            for j:(Fin num_traverse).
+                            Done 
 
 --%time
 --rbf x 
