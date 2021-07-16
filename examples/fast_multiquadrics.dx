@@ -107,7 +107,8 @@ def expand (leaves: Leaves) : Tree =
                 ref!((get index)@_) := (get ref).(left@_) + (get ref).(right@_)
                 index := (get index) - 1
 
-sorted = sort queries (0., 1.)
+root = (0., 1.)
+sorted = sort queries root
 expanded = expand sorted
 
 'Evaluation
@@ -115,7 +116,6 @@ expanded = expand sorted
 -- key idea: separate evaluation point from the source points in the summation
 x = 0.1 -- evaluation point
 
--- wip
 -- Instead of recursing the tree top-down as described in the paper, 
 -- traverse bottom-up based on proximity to the half point,
 -- which requires a convoluted mass of stateful code and if statements, 
@@ -127,7 +127,7 @@ x = 0.1 -- evaluation point
     -- x < middle-w
 -- if we get the first case in the first iteration then we only need to 
 -- traverse m - 3 times. this can inform the bound for the time complexity
-def rbf_approx (x: Float) (tree: Tree) (root: (Float&Float)) : Float =
+def rbf_approx (x: Float) (tree: Tree) (leaves: Leaves) (root: (Float&Float)) : Float =
     yieldState 0.0 \sum. yieldState root \range. yieldState 1 \index.
         sum := boundedIter m (get sum) \i.
             middle = ((fst (get range)) + (snd (get range))) / 2.
@@ -150,29 +150,38 @@ def rbf_approx (x: Float) (tree: Tree) (root: (Float&Float)) : Float =
                             -- obtain middle index to get nearest neighbours.
                             -- note: subtract 1 from index each time tree is queried
                             num_traverse = m - 3 - i
-                            index' = FToI ((middle-(fst root))/w) + num_panels - num_leaves
+                            index' = FToI ((middle-(fst root))/w)
                             case num_traverse >= 0 of
                                 True ->
                                     (l', r') = (index' -1-1, index'+1)
-                                    sum := (get sum) + (laurent_approx x tree.((l'-1)@_)) + (laurent_approx x tree.(l'@_)) + (laurent_approx x tree.((r'-2)@_)) + (laurent_approx x tree.((r'-1)@_))
+                                    (l'', r'') = (index' -1-1 + num_panels - num_leaves, index'+1 + num_panels - num_leaves)
+                                    s = leaves.((l'-1)@_) <> leaves.(l'@_) <> leaves.((r'-2)@_) <> leaves.((r'-1)@_)
+                                    (AsList numq q) = s
+                                    if numq /= 0 then
+                                        q' = for j:(Fin numq). q.(unsafeFromOrdinal _ (ordinal j))
+                                        sum := (get sum) + (rbf x q')
                                     -- left traversal
-                                    yieldState l' \l. 
+                                    yieldState l'' \l. 
                                         for j:(Fin num_traverse). 
                                             l := ((idiv (get l) 2) - 1) - 1
                                             sum := (get sum) + (laurent_approx x tree.((get l)@_))
                                     -- right traversal
-                                    yieldState r' \r.
+                                    yieldState r'' \r.
                                         for j:(Fin num_traverse).
                                             r := (idiv ((get r)-1) 2) +1-1
                                             sum := (get sum) + (laurent_approx x tree.((get r)@_))
                                     Done (get sum)
                                 False ->
                                     (l', r') = (index' -1, index')
-                                    sum := (get sum) + (laurent_approx x tree.((l'-1)@_)) + (laurent_approx x tree.((r'-1)@_))
+                                    s = leaves.((l'-1)@_) <> leaves.((r'-1)@_)
+                                    (AsList numq q) = s
+                                    if numq /= 0 then
+                                        q' = for j:(Fin numq). q.(unsafeFromOrdinal _ (ordinal j))
+                                        sum := (get sum) + (rbf x q')
                                     Done (get sum)
 
---%time
---rbf x 
+%time
+rbf_approx x expanded sorted root
 
 %time
 rbf x queries
