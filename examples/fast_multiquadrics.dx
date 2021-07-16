@@ -82,7 +82,7 @@ def sort (queries: (Fin n)=>(Float&Float)) (root: (Float & Float)): Leaves =
                     range := case (fst s) > middle of 
                         True -> (middle, snd (get range))
                         False -> (fst (get range), middle)
-            index = FToI $ (fst final_range)/w
+            index = FToI $ ((fst final_range)-(fst root))/w
             ref!(index@_) := (get ref).(index@_) <> AsList _ [s]
 
 -- a bit of dynamic programming
@@ -117,7 +117,8 @@ x = 0.1 -- evaluation point
 -- wip
 -- Instead of recursing the tree top-down as described in the paper, 
 -- traverse bottom-up based on proximity to the half point,
--- which requires more convoluted code, but may have better time complexity. 
+-- which requires a convoluted mass of stateful code and if statements, 
+-- but may have better time complexity. 
 -- The emphasis is on the arithmetic enabled by an array-based tree.
 -- three cases:
     -- x is in the range [middle-w, middle+w]
@@ -126,7 +127,7 @@ x = 0.1 -- evaluation point
 -- if we get the first case in the first iteration then we only need to 
 -- traverse m - 3 times. this can inform the bound for the time complexity
 def rbf_approx (x: Float) (tree: Tree) (root: (Float&Float)) : Float =
-    yieldState 0.0 \sum. yieldState root \range. yieldState 0 \index.
+    yieldState 0.0 \sum. yieldState root \range. yieldState 1 \index.
         sum := boundedIter m (get sum) \i.
             middle = ((fst (get range)) + (snd (get range))) / 2.
             case (x > middle + w) of 
@@ -147,14 +148,28 @@ def rbf_approx (x: Float) (tree: Tree) (root: (Float&Float)) : Float =
                         False -> -- we're always looking at the middle, so traversing left/right has the same # of steps
                             num_traverse = m - 3 - i
                             -- no need to traverse if num_traverse is negative.
-                            -- first get the middle index. index is odd iff points to left child. 
-                            -- then get the nearest neighbours.
-                            for j:(Fin num_traverse). 
-                            for j:(Fin num_traverse).
-                            Done 
+                            -- first get the middle index. index is odd iff points to right child. 
+                            -- then get the nearest neighbours. 
+                            -- i.e. if right child, then obtain 2 adjacents from the right, 1 adjacent from the left
+                            -- note: subtract 1 from index each time tree is queried
+                            (l', r') = case x < middle of
+                                True ->
+                                False ->
+                            -- left traversal
+                            yieldState l' \l. 
+                                for j:(Fin num_traverse). 
+                                    l := ((idiv (get l) 2) - 1) - 1
+                                    sum := (get sum) + $ laurent_approx x tree.((get l)@_)
+                            -- right traversal
+                            yieldState r' \r.
+                                for j:(Fin num_traverse).
+                                    r := ((idiv ((get l)-1))+1) - 1
+                                    sum := (get sum) + $ laurent_approx x tree.((get r)@_)
+                            Done (get sum)
 
 --%time
 --rbf x 
 
 %time
 rbf x queries
+
