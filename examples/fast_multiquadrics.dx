@@ -68,6 +68,7 @@ def laurent_approx (x: Float) (coeff: (Fin 6) => Float) : Float =
 'Setup
 
 -- an array representation for the tree.
+-- todo: index set starting from 1 rather than 0
 Tree = (Fin num_panels) => (Fin 6) => Float
 Leaves = (Fin num_leaves) => List (Float & Float)
 
@@ -130,7 +131,7 @@ def rbf_approx (x: Float) (tree: Tree) (root: (Float&Float)) : Float =
     yieldState 0.0 \sum. yieldState root \range. yieldState 1 \index.
         sum := boundedIter m (get sum) \i.
             middle = ((fst (get range)) + (snd (get range))) / 2.
-            case (x > middle + w) of 
+            case (x > (middle + w)) of 
                 True -> -- can approximate all of the left side of the tree
                     index' = (get index) * 2
                     sum := (get sum) + (laurent_approx x tree.(index'@_))
@@ -138,7 +139,7 @@ def rbf_approx (x: Float) (tree: Tree) (root: (Float&Float)) : Float =
                     range := (middle, snd (get range))
                     Continue 
                 False ->
-                    case (x < middle - w) of
+                    case (x < (middle - w)) of
                         True -> -- can approximate all of the right side of the tree
                             index' = (get index) * 2 + 1
                             sum := (get sum) + (laurent_approx x tree.(index'@_))
@@ -146,30 +147,32 @@ def rbf_approx (x: Float) (tree: Tree) (root: (Float&Float)) : Float =
                             range := (fst (get range), middle)
                             Continue
                         False -> -- we're always looking at the middle, so traversing left/right has the same # of steps
-                            num_traverse = m - 3 - i
-                            -- no need to traverse if num_traverse is negative.
-                            -- first get the middle index. index is odd iff points to right child. 
-                            -- then get the nearest neighbours. 
-                            -- i.e. if right child, then obtain 2 adjacents from the right, 1 adjacent from the left
+                            -- obtain middle index to get nearest neighbours.
                             -- note: subtract 1 from index each time tree is queried
-                            (l', r') = case x < middle of
+                            num_traverse = m - 3 - i
+                            index' = FToI ((middle-(fst root))/w) + num_panels - num_leaves
+                            case num_traverse >= 0 of
                                 True ->
+                                    (l', r') = (index' -1-1, index'+1)
+                                    sum := (get sum) + (laurent_approx x tree.((l'-1)@_)) + (laurent_approx x tree.(l'@_)) + (laurent_approx x tree.((r'-2)@_)) + (laurent_approx x tree.((r'-1)@_))
+                                    -- left traversal
+                                    yieldState l' \l. 
+                                        for j:(Fin num_traverse). 
+                                            l := ((idiv (get l) 2) - 1) - 1
+                                            sum := (get sum) + (laurent_approx x tree.((get l)@_))
+                                    -- right traversal
+                                    yieldState r' \r.
+                                        for j:(Fin num_traverse).
+                                            r := (idiv ((get r)-1) 2) +1-1
+                                            sum := (get sum) + (laurent_approx x tree.((get r)@_))
+                                    Done (get sum)
                                 False ->
-                            -- left traversal
-                            yieldState l' \l. 
-                                for j:(Fin num_traverse). 
-                                    l := ((idiv (get l) 2) - 1) - 1
-                                    sum := (get sum) + $ laurent_approx x tree.((get l)@_)
-                            -- right traversal
-                            yieldState r' \r.
-                                for j:(Fin num_traverse).
-                                    r := ((idiv ((get l)-1))+1) - 1
-                                    sum := (get sum) + $ laurent_approx x tree.((get r)@_)
-                            Done (get sum)
+                                    (l', r') = (index' -1, index')
+                                    sum := (get sum) + (laurent_approx x tree.((l'-1)@_)) + (laurent_approx x tree.((r'-1)@_))
+                                    Done (get sum)
 
 --%time
 --rbf x 
 
 %time
 rbf x queries
-
