@@ -16,6 +16,9 @@ def intlog2 (x:Int) : Int =
 
 def intpow2 (power:Int) : Int = %shl 1 power
 
+def floorNum (num: Float) (factor: Float): Float = 
+    (floor (num / factor)) * factor
+
 c = 0.5
 n = 64
 m = intlog2 n -- # levels
@@ -66,8 +69,10 @@ def sum_coeff (q: (Fin a) => (Float&Float)) : (Fin 6) => Float =
     
     [term1, term2, term3, term4, term5, term6]
 
-def laurent_approx (x: Float) (coeff: (Fin 6) => Float) : Float =
-    coeff.(0@_)*x - coeff.(1@_) + coeff.(2@_)/x + coeff.(3@_)/(x*x) + coeff.(4@_)/(x*x*x) + coeff.(5@_)/(x*x*x*x)
+def laurent_approx (x: Float) (t: Float) (coeff: (Fin 6) => Float) : Float =
+    x' = x-t
+    sign = x'/(abs x)
+    sign * (coeff.(0@_)*x' - coeff.(1@_) + coeff.(2@_)/x' + coeff.(3@_)/(x'*x') + coeff.(4@_)/(x'*x'*x') + coeff.(5@_)/(x'*x'*x'*x'))
 
 'Setup
 
@@ -132,13 +137,14 @@ x = 0.1 -- evaluation point
 -- if we get the first case in the first iteration then we only need to 
 -- traverse m - 3 times. this can inform the bound for the time complexity
 def rbf_approx (x: Float) (tree: Tree) (leaves: Leaves) (root: (Float&Float)) : Float =
+    t = (floorNum x w) + (w/2.)
     yieldState 0.0 \sum. yieldState root \range. yieldState 1 \index.
         sum := boundedIter m (get sum) \i.
             middle = ((fst (get range)) + (snd (get range))) / 2.
             case (x > (middle + w)) of 
                 True -> -- can approximate all of the left side of the tree
                     index' = (get index) * 2
-                    sum := (get sum) + (laurent_approx x tree.(index'@_))
+                    sum := (get sum) + (laurent_approx x t tree.(index'@_))
                     index := (get index) * 2 + 1
                     range := (middle, snd (get range))
                     Continue 
@@ -146,7 +152,7 @@ def rbf_approx (x: Float) (tree: Tree) (leaves: Leaves) (root: (Float&Float)) : 
                     case (x < (middle - w)) of
                         True -> -- can approximate all of the right side of the tree
                             index' = (get index) * 2 + 1
-                            sum := (get sum) + (laurent_approx x tree.(index'@_))
+                            sum := (get sum) + (laurent_approx x t tree.(index'@_))
                             index := (get index) * 2
                             range := (fst (get range), middle)
                             Continue
@@ -168,12 +174,12 @@ def rbf_approx (x: Float) (tree: Tree) (leaves: Leaves) (root: (Float&Float)) : 
                                     yieldState l'' \l. 
                                         for j:(Fin num_traverse). 
                                             l := ((idiv (get l) 2) - 1) - 1
-                                            sum := (get sum) + (laurent_approx x tree.((get l)@_))
+                                            sum := (get sum) + (laurent_approx x t tree.((get l)@_))
                                     -- right traversal
                                     yieldState r'' \r.
                                         for j:(Fin num_traverse).
                                             r := (idiv ((get r)-1) 2) +1-1
-                                            sum := (get sum) + (laurent_approx x tree.((get r)@_))
+                                            sum := (get sum) + (laurent_approx x t tree.((get r)@_))
                                     Done (get sum)
                                 False ->
                                     (l', r') = (index' -1, index')
