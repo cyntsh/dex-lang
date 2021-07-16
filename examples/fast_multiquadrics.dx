@@ -51,16 +51,20 @@ queries = for i:(Fin n). (sources.i, weights.i)
 -- todo: a bit inconvenient to adjust sum_coeff and laurent_approx every time p_int is changed
 def sum_coeff (q: (Fin a) => (Float&Float)) : (Fin 6) => Float =
 
+    term1 = yieldAccum (AddMonoid Float) \t.
+        for_ i:(Fin a). t += (snd q.i)
     term2 = yieldAccum (AddMonoid Float) \t.
-        for_ i:(Fin a). t += (fst q.i)
+        for_ i:(Fin a). t += (fst q.i) * (snd q.i)
+    term3 = yieldAccum (AddMonoid Float) \t.
+        for_ i:(Fin a). t+= 0.5 * c*c * (snd q.i)
     term4 = yieldAccum (AddMonoid Float) \t.
-        for_ i:(Fin a). t += 0.5 *c*c*(fst q.i)
+        for_ i:(Fin a). t += 0.5 *c*c*(fst q.i)*(snd q.i)
     term5 = yieldAccum (AddMonoid Float) \t.
-        for_ i:(Fin a). t+= 0.125 * (4. * (fst q.i)*(fst q.i)*c*c - c*c*c*c)     
+        for_ i:(Fin a). t+= 0.125 * (4. * (fst q.i)*(fst q.i)*c*c - c*c*c*c) *(snd q.i)   
     term6 = yieldAccum (AddMonoid Float) \t.
-        for_ i:(Fin a). t+= 0.125 * (4. * (fst q.i)*(fst q.i)*(fst q.i)*c*c - 3. * (fst q.i)*c*c*c*c)
+        for_ i:(Fin a). t+= 0.125 * (4. * (fst q.i)*(fst q.i)*(fst q.i)*c*c - 3. * (fst q.i)*c*c*c*c) *(snd q.i)
     
-    [IToF a, term2, (IToF a) * 0.5 * (sq c), term4, term5, term6]
+    [term1, term2, term3, term4, term5, term6]
 
 def laurent_approx (x: Float) (coeff: (Fin 6) => Float) : Float =
     coeff.(0@_)*x - coeff.(1@_) + coeff.(2@_)/x + coeff.(3@_)/(x*x) + coeff.(4@_)/(x*x*x) + coeff.(5@_)/(x*x*x*x)
