@@ -111,8 +111,37 @@ expanded = expand sorted
 
 'Evaluation
 
--- key idea: separate the involvement of the evaluation point and source points in the summation
+-- key idea: separate evaluation point from the source points in the summation
 x = 0.1 -- evaluation point
+
+-- wip
+-- Instead of recursing the tree top-down as described in the paper, 
+-- traverse bottom-up based on proximity to the half point,
+-- which requires more convoluted code, but may have better time complexity. 
+-- The emphasis is on the arithmetic enabled by an array-based tree.
+-- three cases:
+    -- x is in the range [middle-w, middle+w]
+    -- x > middle+w
+    -- x < middle-w
+-- if we get the first case in the first iteration then we only need to 
+-- traverse m - 3 times. this can inform the bound for the time complexity
+def rbf_approx (x: Float) (tree: Tree) (root: (Float&Float)) : Float =
+    yieldState 0.0 \sum. yieldState root \range. yieldState 0 \index.
+        sum := boundedIter m (get sum) \_.
+            middle = ((fst (get range)) + (snd (get range))) / 2.
+            if (x > middle + w) -- can approximate all of the left side of the tree
+                then 
+                    index' = (get index) * 2
+                    sum := (get sum) + (laurent_approx x tree.(index'@_))
+                    index := (get index) * 2 + 1
+                    range := (middle, snd (get range))
+                else if (x < middle - w) -- can approximate all of the right side of the tree
+                    then
+                        index' = (get index) * 2 + 1
+                        sum := (get sum) + (laurent_approx x tree.(index'@_))
+                        index := (get index) * 2
+                        range := (fst (get range), middle)
+                    else
 
 --%time
 --rbf x 
