@@ -36,16 +36,32 @@ Its functionality is best demonstrated in the following upper triangular matrix:
 
 def cast (d:a) : m = (ordinal d)@m
 
+def fsum' (n: Fin a) ?-> (xs:(..n)=>Float) : Float = yieldAccum (AddMonoid Float) \ref. for i. ref += xs i
+
 def transposeLowerToUpper (lower:LowerTriMat n v) : UpperTriMat n v = 
   for i:n. for j':(i..). 
     j = %inject j'
     lower.j.(cast i)
 
-lmat'' : LowerTriMat (Fin 4) Int = for i j. ordinal (i,j)
+def triMatMul (x:LowerTriMat n Float) (y:UpperTriMat n Float) : (n=>n=>Float) =
+  for i' k'.
+    n' = Fin (size n)
+    l = (min (ordinal i') (ordinal k'))@n'
+    fsum' for j':(..l).
+      i:n = cast i'
+      jx:(..i) = cast %inject j'
+      jy:n = cast %inject j'
+      k:(jy..) = (ordinal k' - ordinal jy)@_
+      x.i.jx * y.jy.k
+
+N'' = Fin 4
+lmat'' : LowerTriMat N'' Float = for i j. IToF $ ordinal (i,j)
 umat'' = transposeLowerToUpper lmat''
+lumat'' = triMatMul lmat'' umat''
 
 :p lmat''
 :p umat''
+:p lumat''
 
 ' ### Stateful updates
 The Effect section in prelude.dx define functions such as `yieldState`, `get`, `(!)`, `:=`. 
@@ -67,25 +83,20 @@ table = yieldState table_init \table_ref. -- create a "pointer" to the state
 
 ' ## Cholesky Algorithm
 
--- workaround for ref!i!j -- issue #239
-def lowerTriMat (ref:Ref h (LowerTriMat a b)) (i:a) (j:(..i)) : Ref h b =
-    d = %indexRef ref i
-    d!j
-
 def chol (x:n=>n=>Float) : LowerTriMat n Float =
   yieldState zero \buf.
-    mat = lowerTriMat buf
+    mat = lowerTriIndex buf
     for i:n. for j':(..i).
       j = %inject j'
-      row  = for k:(..<j). get $ mat i (cast k)
-      row' = for k:(..<j). get $ mat j (cast k)
+      row  = for k:(..<j). get $ (mat i)!(cast k)
+      row' = for k:(..<j). get $ (mat j)!(cast k)
       a = x.i.j - vdot row row'
       if (ordinal i) == (ordinal j)
         then
-          mat i j' := sqrt a
+          (mat i)!j' := sqrt a
         else
-          b = get $ mat j (cast j')
-          mat i j' := a / b
+          b = get $ (mat j)!(cast j')
+          (mat i)!j' := a / b
 
 ' ## PSD solver based on Cholesky decomposition
 
@@ -112,14 +123,8 @@ def padLowerTriMat [Add v] (mat:LowerTriMat n v) : n=>n=>v =
       else zero
 
 l = chol psd
-l_full = padLowerTriMat l
-:p l_full
-> [ [2.021765, 0., 0., 0.]
-> , [-1.795019, 1.990174, 0., 0.]
-> , [-0.897886, 0.186757, 1.980266, 0.]
-> , [1.445752, -0.296448, 0.724586, 2.230807] ]
 
-psdReconstructed = l_full ** transpose l_full
+psdReconstructed = triMatMul l $ transposeLowerToUpper l
 
 :p sum for (i, j). sq (psd.i.j - psdReconstructed.i.j)
 > 0.
