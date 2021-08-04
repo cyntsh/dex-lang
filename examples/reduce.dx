@@ -2,6 +2,8 @@
 to deal with [this](https://github.com/google-research/dex-lang/issues/258) and 
 [this](https://github.com/cyntsh/dex-lang/blob/82a74b0d0f5bf2e6efc9ca745976085986897789/examples/nglod.dx#L93)
 
+-- is there a way to allow Exprs as types without dealing with the compiler? maybe by defining a wrapper, interface, etc.
+
 data To64Bit a:Type = MkTo64Bit t:Type (a->t)
 
 @instance upcastInt32 : To64Bit Int32 = MkTo64Bit Int64 IToI64
