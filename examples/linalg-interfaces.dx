@@ -1,0 +1,157 @@
+' ### Linalg interfaces
+
+import linalg
+
+def cast (d:a) : m = (ordinal d)@_
+
+-- another interface for fsum, reduce and sum?
+def fsum' (n: Fin a) ?-> (xs:(..n)=>Float) : Float = yieldAccum (AddMonoid Float) \ref. for i. ref += xs i
+
+def reduce' 
+def sum' (n: Fin a) ?-> ()
+
+def triMatMul (x: LowerTriMat n Float) (y: UpperTriMat n Float) : (n=>n=>Float) =
+  for i' k'.
+    n' = Fin (size n)
+    l = (min (ordinal i') (ordinal k'))@n'
+    fsum' for j':(..l).
+      i:n = cast i'
+      jx:(..i) = cast %inject j'
+      jy:n = cast %inject j'
+      k:(jy..) = (ordinal k' - ordinal jy)@_
+      x.i.jx * y.jy.k
+
+def padLowerTriMat [Add v] (mat:LowerTriMat n v) : n=>n=>v = 
+  for i j.
+    if (ordinal j)<=(ordinal i)
+      then mat.i.(cast j)
+      else zero
+
+def padUpperTriMat [Add v] (mat:UpperTriMat n v) : n=>n=>v =
+  for i j.
+    if (ordinal j)>=(ordinal i)
+      then mat.i.(cast j)
+      else zero
+
+instance Eq (n=>m=>Float)
+  (==) = \x y. 
+    se = sum for (i, j). sq (x.i.j - y.i.j)
+    se == 0.
+
+instance Eq (LowerTriMat n Float)
+  (==) = \x y. 
+    se = sum' for i:n. for j:(..i). sq (x.i.j - y.i.j)
+    se == 0.
+
+interface Transpose a b
+  transpose' : a -> b
+
+instance Transpose (n=>m=>a) (m=>n=>a)
+  transpose' = \x. view i j. x.j.i
+
+instance Transpose (LowerTriMat n a) (UpperTriMat n a)
+  transpose' = \x. for i j'. 
+    j = %inject j'
+    x.j.(cast i)
+
+instance Transpose (UpperTriMat n a) (LowerTriMat n a)
+  transpose' = \x. for i j'.
+    j = %inject j'
+    x.j.(cast i)
+
+interface MatMul a b c
+  (***) : a -> b -> c
+
+instance MatMul (n=>m=>Float) (m=>l=>Float) (n=>l=>Float)
+  (***) = \x y. for i k. fsum view j. x.i.j * y.j.k
+
+instance MatMul (LowerTriMat n Float) (UpperTriMat n Float) (n=>n=>Float)
+  (***) = \x y. 
+    for i' k'.
+      n' = Fin (size n)
+      l = (min (ordinal i') (ordinal k'))@n'
+      fsum' for j':(..l).
+        i = cast i'
+        jx = cast j'
+        jy = cast j'
+        k = (ordinal k' - ordinal jy)@_
+        x.i.jx * y.jy.k
+
+instance MatMul (LowerTriMat n Float) (LowerTriMat n Float) (LowerTriMat n Float)
+  (***) = \x y. 
+    for i':n. for k':(..i').
+      n' = Fin (size n)
+      l = (ordinal i' - ordinal k')@n'
+      fsum' for j':(..l).
+        i = cast i'
+        jx = (ordinal j' + ordinal k')@_
+        jy = (ordinal j' + ordinal k')@_
+        k = cast k'
+        x.i.jx * y.jy.k
+      
+-- todo:
+-- (UpperTriMat n Float) (UpperTriMat n Float) (UpperTriMat n Float)
+-- (UpperTriMat n Float) (LowerTriMat n Float) (n=>n=>Float)
+-- 
+
+' Tests
+
+N = Fin 4
+fmat = for i:N. for j:N. IToF $ ordinal (i,j)
+fmat': N=>N=>Float = transpose' fmat
+
+ffmat: N=>N=>Float = fmat *** fmat'
+
+:p fmat
+:p fmat'
+:p ffmat
+
+lmat : LowerTriMat N Float = for i j. IToF $ ordinal (i,j)
+umat: UpperTriMat N Float = transpose' lmat
+lmat': LowerTriMat N Float = transpose' umat 
+
+lumat: N=>N=>Float = lmat *** umat
+llmat: LowerTriMat N Float = lmat *** lmat
+
+:p lmat == lmat'
+:p lmat
+:p umat
+:p lumat
+:p llmat
+
+' Asymptotic complexity
+
+%time
+test1 = for k:(Fin 10000000).
+  lmat: LowerTriMat (Fin 10) Float = for i j. IToF $ ordinal (i,j) + ordinal k
+  umat: UpperTriMat (Fin 10) Float = transpose' lmat 
+  triMatMul lmat umat
+> Compile time: 813.508 ms
+> Run time:     6.542 s 
+
+%time
+test2 = for k:(Fin 10000000).
+  lmat: LowerTriMat (Fin 10) Float = for i j. IToF $ ordinal (i,j) + ordinal k
+  plmat = padLowerTriMat lmat
+  umat: (Fin 10)=>(Fin 10)=>Float = transpose' plmat
+  plmat ** umat
+> Compile time: 208.818 ms
+> Run time:     2.621 s 
+
+%time
+test3 = for k:(Fin 100).
+  lmat: LowerTriMat (Fin 400) Float = for i j. IToF $ ordinal (i,j) + ordinal k
+  umat: UpperTriMat (Fin 400) Float = transpose' lmat 
+  triMatMul lmat umat
+> Compile time: 727.811 ms
+> Run time:     2.664 s 
+
+%time
+test4 = for k:(Fin 100).
+  lmat: LowerTriMat (Fin 400) Float = for i j. IToF $ ordinal (i,j) + ordinal k
+  plmat = padLowerTriMat lmat
+  umat:(Fin 400)=>(Fin 400)=>Float = transpose' plmat
+  plmat ** umat
+> Compile time: 227.081 ms
+> Run time:     4.944 s 
+
