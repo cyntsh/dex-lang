@@ -1,0 +1,29 @@
+'## Reductions
+to deal with [this](https://github.com/google-research/dex-lang/issues/258) and 
+[this](https://github.com/cyntsh/dex-lang/blob/82a74b0d0f5bf2e6efc9ca745976085986897789/examples/nglod.dx#L93)
+
+data To64Bit a:Type = MkTo64Bit t:Type (a->t)
+
+@instance upcastInt32 : To64Bit Int32 = MkTo64Bit Int64 IToI64
+@instance upcastInt64 : To64Bit Int64 = MkTo64Bit Int64 id
+
+def GetUpcast (a : Type) -> (d : To64Bit a) ?=> : Type = case d of MkTo64Bit t _ -> t
+
+interface Upcast a
+  GetUpcast' : a -> %Int64
+
+instance Upcast %Int32 -- ?!
+  GetUpcast' = \x. GetUpcast x
+
+:p GetUpcast Int32
+> Int64
+def upcast_Int32 : Type = GetUpcast Int32
+
+def upcast (a : Type)?-> (d : To64Bit a) ?=> (v : a) : (GetUpcast a) =
+  (MkTo64Bit _ fn) = d
+  fn v
+
+t1 = Fin 10 => upcast_Int32
+t1
+
+t2 = Fin 10 => GetUpcast Int32
