@@ -67,9 +67,10 @@ Position = Vec D
 Velocity = Vec D
 Acceleration = Vec D
 Mass = Float
+Density = Float
 
 data BodyState = 
-    MkBodyState Mass Position Velocity Acceleration
+    MkBodyState Mass Position Velocity Acceleration Density
 
 BodyInd = Fin n
 
@@ -77,28 +78,30 @@ BodyInd = Fin n
 initPos:BodyInd=>Position = 1.0e-1 .* for i j. rand $ ixkey2 k1 i j
 initVel:BodyInd=>Velocity = zero
 initAcc:BodyInd=>Acceleration = getAcc initPos initVel m h k pIdx lmbda nu
+initDen:BodyInd=>Density = getDensity initPos initPos m h
 initState:BodyInd=>BodyState = for i. 
-  MkBodyState m initPos.i initVel.i initAcc.i
+  MkBodyState m initPos.i initVel.i initAcc.i initDen.i
 
 -- leapfrog integrator
 def update (bodystates:n=>BodyState) (dt:Float) : n=>BodyState =
   -- Updates all the body states.
   bodystates' = for i.
-    (MkBodyState mass pos vel acc) = bodystates.i
+    (MkBodyState mass pos vel acc den) = bodystates.i
     vel' = vel + dt/2. .* acc
     pos' = pos + dt .* vel'
-    MkBodyState mass pos' vel' acc
+    MkBodyState mass pos' vel' acc den
   totalPos = for i.
-    (MkBodyState mass pos vel acc) = bodystates'.i
+    (MkBodyState mass pos vel acc den) = bodystates'.i
     pos
   totalVel = for i.
-    (MkBodyState mass pos vel acc) = bodystates'.i
+    (MkBodyState mass pos vel acc den) = bodystates'.i
     vel
   updatedAcc = getAcc totalPos totalVel m h k pIdx lmbda nu
+  updatedDen = getDensity totalPos totalPos m h
   for i.
-    (MkBodyState mass pos vel acc) = bodystates'.i
+    (MkBodyState mass pos vel acc den) = bodystates'.i
     vel' = vel + dt/2. .* updatedAcc.i
-    MkBodyState mass pos vel' updatedAcc.i
+    MkBodyState mass pos vel' updatedAcc.i updatedDen.i
 
 def step (_: Times) (bodies:n=>BodyState) : n=>BodyState = 
   update bodies dt
@@ -145,17 +148,17 @@ def hslToRgb (h:Float) (s:Float) (l:Float) : (Fin 3)=>Float =
 def pathImgs (hist:t=>n=>BodyState) : t=>h=>w=>(Fin 3)=>Float =
     size_h = IToF $ size h
     size_w = IToF $ size w
-    max_mass = m
+    max_d = 1.
     yieldAccum (AddMonoid Float) \imgs.
       for tt i.
-        (MkBodyState m p _ escaped) = hist.tt.i
+        (MkBodyState m p _ _ d) = hist.tt.i
         [x, y, _] = p
         wx' = FToI $ round $ clip (0.0,1.0) ((x+1.)/3.) * (size_h-1.)
         hy' = FToI $ round $ clip (0.0,1.0) ((y+1.)/3.) * (size_w-1.)
         wx = (wx'@_)
         hy = (hy'@_)
-        c = m/max_mass
-        imgs!tt!hy!wx += [1., 1., 1.]
+        c = d/max_d
+        imgs!tt!hy!wx += zero + hslToRgb c 1.0 0.5
       ()
 
 -- Change me! resolution
@@ -181,4 +184,5 @@ pngs = map imgToPng imgs
 
 %time
 pngsToSavedGif 5 pngs "sph"
+
 
