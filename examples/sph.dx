@@ -1,0 +1,121 @@
+'## Smoothed-particle hydrodynamics
+Ported from [this](https://github.com/pmocz/sph-python) implementation by Philip Mocz.
+
+D = 3
+def Vec (d:Int) : Type = (Fin d)=>Float
+
+def map' (f:a->{|eff} b) (xs:n=>m=>a) : {|eff} (n=>m=>b) = for i j. f xs.i.j
+def exp' (h:Float) (x:Float) : Float = exp $ -1. * sq x / sq h
+def dist (xs:n=>m=>Vec D) : n=>m=>Float = for i j. sqrt $ vdot xs.i.j xs.i.j
+
+-- gaussian smoothing kernel
+def GSK (xs:n=>m=>Vec D) (h:Float) : n=>m=>Float =
+  pow (1.0 / (h * sqrt pi)) 3. .* (map' (exp' h) (dist xs))
+
+def gradGSK (xs:n=>m=>Vec D) (h:Float) : (n=>m=>Vec D) =
+  scale = (-2. / (pow h 5. * pow pi 3./2.)) .* (map' (exp' h) (dist xs))
+  for i j k. scale.i.j * xs.i.j.k
+
+def getPairwiseSeparations (xs:n=>Vec D) (ys:m=>Vec D) : n=>m=>Vec D =
+  for i j. xs.i - ys.j
+
+def getDensity (samples:n=>Vec D) (pos:m=>Vec D) 
+               (m:Float) (h:Float) : n=>Float =
+  xs = m .* GSK (getPairwiseSeparations samples pos) h
+  for i. sum $ xs.i
+
+def getPressure (rho:n=>Float) (k:Float) (pIdx:Float) : n=>Float =
+  k .* (map (\d. pow d (1.+1./pIdx)) rho)
+
+def getAcc (pos:n=>Vec D) (vel:n=>Vec D)
+           (m:Float) (h:Float) (k:Float) (pIdx:Float) 
+           (lmbda:Float) (nu:Float) : n=>Vec D =
+  rho = getDensity pos pos m h
+  p = getPressure rho k pIdx
+  xs = getPairwiseSeparations pos pos
+  del = gradGSK xs h
+  p' = m .* (for i. for j. p.i / sq rho.i + p.j / sq rho.j)
+  a = for i. 
+    row = for j. [p'.i.j * del.i.j.(0@_),
+                  p'.i.j * del.i.j.(1@_),
+                  p'.i.j * del.i.j.(2@_)]
+    -1. .* (sum row)
+
+  -- add external potential force and viscosity to acceleration
+  a - lmbda .* pos - nu .* vel
+
+'### Simulation
+
+'Parameters
+
+Times = Fin 100
+n = 400       -- # particles
+dt = 0.04     -- timestep
+mStar = 2.    -- star mass
+rStar = 0.75  -- star radius
+h = 0.1       -- smoothing length
+k = 0.1       -- equation of state constant
+pIdx = 1.        -- polytropic index
+nu = 1.       -- damping
+
+depOnI1 = 3.323350970447843
+depOnI2 = 1.
+lmbda = (2.)*k*(1. + pIdx)*(pow pi (-3./(2. * pIdx)))*(pow (mStar*depOnI1/(pow rStar 3.)/depOnI2) (1./pIdx))/(pow rStar 2.)
+m = mStar/(IToF n)   -- single particle mass
+
+Position = Vec D
+Velocity = Vec D
+Acceleration = Vec D
+Mass = Float
+
+data BodyState = 
+    MkBodyState Mass Position Velocity Acceleration
+
+BodyInd = Fin n
+
+[k1,k2] = splitKey (newKey 0)
+initPos:BodyInd=>Position = for i j. rand $ ixkey2 k1 i j
+initVel:BodyInd=>Velocity = zero
+initAcc:BodyInd=>Acceleration = getAcc initPos initVel m h k pIdx lmbda nu
+initState:BodyInd=>BodyState = for i. 
+  MkBodyState m initPos.i initVel.i initAcc.i
+
+-- leapfrog integrator
+def update (bodystates:n=>BodyState) (dt:Float) : n=>BodyState =
+  -- Updates all the body states.
+  bodystates' = for i.
+    (MkBodyState mass pos vel acc) = bodystates.i
+    vel' = vel + dt/2. .* acc
+    pos' = pos + dt .* vel'
+    MkBodyState mass pos' vel' acc
+  totalPos = for i.
+    (MkBodyState mass pos vel acc) = bodystates'.i
+    pos
+  totalVel = for i.
+    (MkBodyState mass pos vel acc) = bodystates'.i
+    vel
+  updatedAcc = getAcc totalPos totalVel m h k pIdx lmbda nu
+  for i.
+    (MkBodyState mass pos vel acc) = bodystates'.i
+    vel' = vel + dt/2. .* updatedAcc.i
+    MkBodyState mass pos vel' updatedAcc.i
+
+def step (_: Times) (bodies:n=>BodyState) : n=>BodyState = 
+  update bodies dt
+
+-- Versions of scan that explicity take the index set n.
+def scan'' (init:a) (n:Type) (body:n->a->(a&b)) : (a & n=>b) =
+  swap $ runState init \s. for i.
+    c = get s
+    (c', y) = body i c
+    s := c'
+    y
+
+def scan''' (init:a) (n:Type) (body:n->a->a) : n=>a =
+  snd $ scan'' init n \i x. dup (body i x)
+
+%time
+history = scan''' initState Times step
+
+:t history
+
