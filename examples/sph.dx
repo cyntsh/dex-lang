@@ -119,3 +119,65 @@ history = scan''' initState Times step
 
 :t history
 
+' #### Gif
+
+def hue2rgb (p:Float) (q:Float) (t:Float) : Float = 
+  t = t - floor t
+  if t < (1.0/6.0)
+    then p + (q - p) * 6.0 * t
+    else if t < (1.0/2.0)
+      then q
+      else if t < (2.0/3.0)
+        then p + (q - p) * (2.0/3.0 - t) * 6.0
+        else p
+
+def hslToRgb (h:Float) (s:Float) (l:Float) : (Fin 3)=>Float =
+  if s == 0.0
+    then [l, l, l] -- achromatic
+    else
+      q = select (l < 0.5) (l * (1.0 + s)) (l + s - l * s)
+      p = 2.0 * l - q
+      r = hue2rgb p q (h + 1.0/3.0)
+      g = hue2rgb p q h
+      b = hue2rgb p q (h - 1.0/3.0)
+      [r, g, b]
+
+def pathImgs (hist:t=>n=>BodyState) : t=>h=>w=>(Fin 3)=>Float =
+    size_h = IToF $ size h
+    size_w = IToF $ size w
+    max_mass = m
+    yieldAccum (AddMonoid Float) \imgs.
+      for tt i.
+        (MkBodyState m p _ escaped) = hist.tt.i
+        [x, y, _] = p
+        wx' = FToI $ round $ clip (0.0,1.0) x * (size_h-1.)
+        hy' = FToI $ round $ clip (0.0,1.0) y * (size_w-1.)
+        wx = (wx'@_)
+        hy = (hy'@_)
+        c = m/max_mass
+        imgs!tt!hy!wx += [1., 1., 1.]
+      ()
+
+-- Change me! resolution
+imgs : Times=>(Fin 400)=>(Fin 400)=>(Fin 3)=>Float = pathImgs history
+
+import png
+
+-- :html imgToHtml $ pngsToGif 5 $ map imgToPng imgs
+
+def pngsToSavedGif (delay:Int) (pngs:t=>Png) (outFileName:String) : Gif =
+  unsafeIO \().
+    withTempFiles \pngFiles.
+      for i.
+        writeFile pngFiles.i pngs.i
+      shellOut $
+        "convert" <> " -delay " <> show delay <> " " <>
+        concat (for i. "png:" <> pngFiles.i <> " ") <>
+        "gif:" <> outFileName <> ".gif"
+
+%time
+pngs = map imgToPng imgs
+
+
+%time
+pngsToSavedGif 5 pngs "sph"
